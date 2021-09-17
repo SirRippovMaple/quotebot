@@ -27,8 +27,49 @@ namespace QuoteBot
         {
             if (DateTime.UtcNow > _quoteCommandCooldownExpiry)
             {
-                await ExecuteQuoteRandom(chatConnection);
+                var parser = new ParameterParser(message, Command);
+                var quoteNumber = parser.ReadIntOptional();
+
+                if (quoteNumber == null)
+                {
+                    await ExecuteQuoteRandom(chatConnection);
+                }
+                else
+                {
+                    await ExecuteQuote(chatConnection, quoteNumber.Value);
+                }
+
                 _quoteCommandCooldownExpiry = DateTime.UtcNow.AddSeconds(30);
+            }
+        }
+
+        private async Task ExecuteQuote(ITwitchChatConnection chatConnection, int quoteNumber)
+        {
+            const string sql = @"
+                SELECT q.id, q.Text FROM Quotes q
+                WHERE q.id = @quoteNumber
+                LIMIT 1
+            ";
+
+            await using var connection = new NpgsqlConnection(_options.Value.ConnectionString);
+
+            var result = (await connection.QueryAsync(sql, new { quoteNumber })).ToList();
+            var quote = result.FirstOrDefault()?.text;
+            if (!string.IsNullOrEmpty(quote))
+            {
+                await chatConnection.WriteMessage(new IrcMessage(
+                    "PRIVMSG",
+                    $"#{_options.Value.Channel}",
+                    $"{quote} [{quoteNumber}]")
+                );
+            }
+            else
+            {
+                await chatConnection.WriteMessage(new IrcMessage(
+                    "PRIVMSG",
+                    $"#{_options.Value.Channel}",
+                    "That quote does not exist or is deleted.")
+                );
             }
         }
         
@@ -36,7 +77,7 @@ namespace QuoteBot
         {
             const string countSql = "SELECT COUNT(1) FROM Quotes";
             const string sql = @"
-                SELECT q.Text FROM Quotes q
+                SELECT q.id, q.Text FROM Quotes q
                 ORDER BY q.id
                 OFFSET @offset
                 LIMIT 1
@@ -48,12 +89,14 @@ namespace QuoteBot
             var offset = rng.Next(0, count);
             var result = (await connection.QueryAsync(sql, new { offset })).ToList();
             var quote = result.FirstOrDefault()?.text;
+            var quoteNumber = result.FirstOrDefault()?.id;
+            
             if (!string.IsNullOrEmpty(quote))
             {
                 await chatConnection.WriteMessage(new IrcMessage(
                     "PRIVMSG",
                     $"#{_options.Value.Channel}",
-                    quote)
+                    $"{quote} [{quoteNumber}]")
                 );
             }
             else
