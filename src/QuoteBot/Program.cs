@@ -32,6 +32,7 @@ namespace QuoteBot
             collection.AddSingleton(_ => Log.Logger);
             collection.AddSingleton<IChatCommand, AddQuoteCommand>();
             collection.AddSingleton<IChatCommand, GetQuoteCommand>();
+            collection.AddSingleton<IChatCommand, DeleteQuoteCommand>();
             collection.AddSingleton<CommandParser>();
         }
     }
